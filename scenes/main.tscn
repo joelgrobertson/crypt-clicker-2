@@ -1,0 +1,73 @@
+[gd_scene format=3 uid="uid://clc4012s4mwlw"]
+
+[ext_resource type="Script" uid="uid://cq3obpenelgjv" path="res://scripts/core/main.gd" id="1"]
+[ext_resource type="Script" uid="uid://cfes3v6mcvggl" path="res://scripts/core/necromancer_hand.gd" id="2"]
+[ext_resource type="Shader" uid="uid://qe5ydlckh7rj" path="res://shaders/psx_unlit.gdshader" id="3"]
+[ext_resource type="Shader" uid="uid://47ehy3p55v7t" path="res://shaders/psx_postprocess.gdshader" id="4"]
+[ext_resource type="PackedScene" uid="uid://ntechamber" path="res://scenes/stages/antechamber.tscn" id="4_tbgi4"]
+
+[sub_resource type="Environment" id="game_environment"]
+background_mode = 1
+background_color = Color(0.05, 0.02, 0.08, 1)
+ambient_light_source = 2
+ambient_light_color = Color(0.3, 0.25, 0.35, 1)
+ambient_light_energy = 0.8
+
+[sub_resource type="ShaderMaterial" id="hand_material"]
+render_priority = 0
+shader = ExtResource("3")
+shader_parameter/albedo_color = Color(0.6, 0.2, 0.9, 1)
+shader_parameter/jitter_strength = 0.3
+shader_parameter/emission_strength = 2.0
+
+[sub_resource type="ShaderMaterial" id="postprocess_material"]
+shader = ExtResource("4")
+shader_parameter/color_depth = 5
+shader_parameter/dithering = true
+
+[node name="Main" type="Node3D" unique_id=1676713540]
+script = ExtResource("1")
+
+[node name="WorldEnvironment" type="WorldEnvironment" parent="." unique_id=272502059]
+environment = SubResource("game_environment")
+
+[node name="CameraRig" type="Node3D" parent="." unique_id=1230709248]
+transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, 0, 0, 5)
+
+[node name="Camera3D" type="Camera3D" parent="CameraRig" unique_id=2130392963]
+transform = Transform3D(1, 0, 0, 0, 0.707107, 0.707107, 0, -0.707107, 0.707107, 0, 15, 10.5)
+fov = 45.0
+near = 0.1
+far = 100.0
+
+[node name="NecromancerHand" type="Node3D" parent="." unique_id=6846825]
+transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, 0, 1.5, 0)
+script = ExtResource("2")
+
+[node name="HandMesh" type="CSGBox3D" parent="NecromancerHand" unique_id=215898360]
+material_override = SubResource("hand_material")
+size = Vector3(0.4, 0.15, 0.6)
+
+[node name="HandGlow" type="OmniLight3D" parent="NecromancerHand" unique_id=624305215]
+light_color = Color(0.5, 0.1, 0.8, 1)
+light_energy = 2.0
+omni_range = 4.0
+omni_attenuation = 2.0
+
+[node name="Dungeon" type="Node3D" parent="." unique_id=1373786]
+
+[node name="Antechamber" parent="Dungeon" unique_id=695486494 instance=ExtResource("4_tbgi4")]
+
+[node name="DirectionalLight3D" type="DirectionalLight3D" parent="." unique_id=1776283986]
+transform = Transform3D(1, 0, 0, 0, 0.5, 0.866, 0, -0.866, 0.5, 0, 10, 0)
+light_color = Color(0.8, 0.75, 0.9, 1)
+light_energy = 0.6
+
+[node name="PostProcessLayer" type="CanvasLayer" parent="." unique_id=956235227]
+layer = 10
+
+[node name="PostProcessRect" type="ColorRect" parent="PostProcessLayer" unique_id=1091527374]
+material = SubResource("postprocess_material")
+anchors_preset = 15
+anchor_right = 1.0
+anchor_bottom = 1.0
