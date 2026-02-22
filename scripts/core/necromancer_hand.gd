@@ -117,7 +117,7 @@ func _calculate_throw_velocity() -> Vector3:
 	# Convert 2D mouse movement to 3D world direction
 	# mouse X → world X, mouse Y → world Z (inverted because screen Y is down)
 	var throw_dir := Vector3(mouse_delta.x, 0, mouse_delta.y).normalized()
-	var force: Variant = clamp(mouse_delta.length() * THROW_FORCE_MULTIPLIER * 0.1, 0.0, THROW_FORCE_MAX)
+	var force: float = clamp(mouse_delta.length() * THROW_FORCE_MULTIPLIER * 0.1, 0.0, THROW_FORCE_MAX)
 	
 	# Add some upward arc
 	throw_dir.y = 0.3
