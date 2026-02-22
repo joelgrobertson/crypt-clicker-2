@@ -1,5 +1,6 @@
 extends Node3D
-## Main game controller — manages stages, camera, and global game state.
+## Main game controller — wires together all systems:
+## Camera, Hand, Wave Spawner, Enemy damage, HUD updates.
 
 # -- Camera Settings --
 const CAMERA_SPEED := 15.0
@@ -12,27 +13,53 @@ const CAMERA_ZOOM_MAX := 25.0
 @onready var camera: Camera3D = $CameraRig/Camera3D
 @onready var hand: Node3D = $NecromancerHand
 @onready var dungeon: Node3D = $Dungeon
+@onready var wave_spawner: Node3D = $WaveSpawner
+@onready var hud: Control = $HUDLayer/HUD
 
-# -- State --
+# -- Game State --
 var camera_zoom := 15.0
-var mouse_world_pos := Vector3.ZERO  # Where the mouse ray hits the ground plane
+var mouse_world_pos := Vector3.ZERO
+var total_kills := 0
+var total_xp := 0.0
+var door_health := 20  # Heroes that can breach before stage is lost
+var game_started := false
 
 func _ready() -> void:
-	# Lock mouse to window (we'll use custom cursor via the hand)
-	# Input.set_mouse_mode(Input.MOUSE_MODE_CONFINED)  # Uncomment if desired
-	
-	# Set initial camera zoom
 	_update_camera_zoom()
 	
-	print("Crypt Clicker V5 — The crypt awaits...")
+	# Connect hand signals to game logic
+	hand.smite_hit.connect(_on_smite_hit)
+	hand.entity_grabbed.connect(_on_entity_grabbed)
+	hand.entity_thrown.connect(_on_entity_thrown)
+	
+	# Connect wave spawner signals
+	wave_spawner.wave_started.connect(_on_wave_started)
+	wave_spawner.wave_cleared.connect(_on_wave_cleared)
+	wave_spawner.enemy_killed.connect(_on_enemy_killed)
+	wave_spawner.enemy_breached.connect(_on_enemy_breached)
+	
+	# Start waves after a short delay so player can look around
+	await get_tree().create_timer(2.0).timeout
+	wave_spawner.start_waves()
+	game_started = true
+	
+	print("Crypt Clicker V5 — Defend the crypt!")
 
 func _process(delta: float) -> void:
 	_handle_camera_movement(delta)
 	_update_mouse_world_position()
 	_update_hand_position()
+	
+	# Update HUD
+	if hud and game_started:
+		hud.update_display(
+			wave_spawner.current_wave,
+			total_kills,
+			wave_spawner.global_timer,
+			door_health
+		)
 
 func _unhandled_input(event: InputEvent) -> void:
-	# Zoom with scroll wheel (Ctrl+Scroll per design doc)
 	if event is InputEventMouseButton:
 		if event.pressed:
 			if event.button_index == MOUSE_BUTTON_WHEEL_UP:
@@ -42,11 +69,10 @@ func _unhandled_input(event: InputEvent) -> void:
 				camera_zoom = min(camera_zoom + CAMERA_ZOOM_SPEED, CAMERA_ZOOM_MAX)
 				_update_camera_zoom()
 
+# ========== CAMERA ==========
+
 func _handle_camera_movement(delta: float) -> void:
 	var move_dir := Vector3.ZERO
-	
-	# WASD camera pan — note these move along the GROUND plane,
-	# not the camera's local axes, so "up" always means "away from camera"
 	if Input.is_action_pressed("camera_up"):
 		move_dir.z -= 1.0
 	if Input.is_action_pressed("camera_down"):
@@ -61,37 +87,59 @@ func _handle_camera_movement(delta: float) -> void:
 		camera_rig.position += move_dir * CAMERA_SPEED * delta
 
 func _update_camera_zoom() -> void:
-	# Camera is a child of CameraRig, positioned at an offset
-	# Adjusting the camera's position.y and position.z controls zoom
-	# For isometric: camera sits high and back, looking down at ~45 degrees
 	camera.position = Vector3(0, camera_zoom, camera_zoom * 0.7)
 	camera.look_at(camera_rig.global_position, Vector3.UP)
 
+# ========== MOUSE → 3D WORLD ==========
+
 func _update_mouse_world_position() -> void:
-	## Cast a ray from the mouse position to the ground plane (Y=0).
-	## This tells us where in 3D world space the player is "pointing."
 	var mouse_pos := get_viewport().get_mouse_position()
 	var ray_origin := camera.project_ray_origin(mouse_pos)
 	var ray_dir := camera.project_ray_normal(mouse_pos)
 	
-	# Intersect with ground plane (Y = 0)
-	# Formula: t = -origin.y / direction.y
 	if ray_dir.y != 0:
 		var t := -ray_origin.y / ray_dir.y
 		if t > 0:
 			mouse_world_pos = ray_origin + ray_dir * t
 
 func _update_hand_position() -> void:
-	## The necromancer hand follows the mouse cursor in 3D space,
-	## floating slightly above the ground.
 	var target := mouse_world_pos
-	target.y = 1.5  # Float above the ground
-	
-	# Smooth follow — the hand glides toward the mouse position
+	target.y = 1.5
 	hand.global_position = hand.global_position.lerp(target, 0.15)
 	
-	# Rotate hand to face movement direction
-	var velocity := target - hand.global_position
-	if velocity.length() > 0.01:
-		var angle := atan2(velocity.x, velocity.z)
+	var vel := target - hand.global_position
+	if vel.length() > 0.01:
+		var angle := atan2(vel.x, vel.z)
 		hand.rotation.y = lerp_angle(hand.rotation.y, angle, 0.1)
+
+# ========== GAME EVENTS ==========
+
+func _on_smite_hit(target: Node3D, damage: float) -> void:
+	if target.has_method("take_damage"):
+		target.take_damage(damage)
+
+func _on_entity_grabbed(entity: Node3D) -> void:
+	if entity is Enemy:
+		entity.is_grabbed = true
+
+func _on_entity_thrown(entity: Node3D, throw_velocity: Vector3) -> void:
+	if entity is Enemy and is_instance_valid(entity):
+		entity.is_grabbed = false
+		entity.start_thrown(throw_velocity)
+
+func _on_wave_started(wave_number: int) -> void:
+	print("=== WAVE %d ===" % wave_number)
+
+func _on_wave_cleared(wave_number: int) -> void:
+	print("Wave %d cleared!" % wave_number)
+
+func _on_enemy_killed(xp_value: float) -> void:
+	total_kills += 1
+	total_xp += xp_value
+
+func _on_enemy_breached() -> void:
+	door_health -= 1
+	if door_health <= 0:
+		print("THE DOOR HAS FALLEN! Retreating deeper...")
+		# TODO: Stage transition
+		door_health = 20
